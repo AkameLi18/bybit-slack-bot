@@ -10,6 +10,7 @@ BYBIT_API_KEY = os.getenv("BYBIT_API_KEY")
 BYBIT_API_SECRET = os.getenv("BYBIT_API_SECRET")
 SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
 TESTNET = os.getenv("BYBIT_TESTNET", "false").lower() == "true"
+notified_start = False
 
 WS_URL = (
     "wss://stream-testnet.bybit.com/v5/private"
@@ -27,9 +28,19 @@ def sign_message(expires):
     ).hexdigest()
 
 def slack(text):
-    requests.post(SLACK_WEBHOOK_URL, json={"text": text}, timeout=10)
+    try:
+        r = requests.post(
+            SLACK_WEBHOOK_URL,
+            json={"text": text},
+            timeout=10
+        )
+        return r.status_code == 200
+    except Exception:
+        return False
 
 def on_open(ws):
+    global notified_start
+
     expires = int(time.time() * 1000) + 10000
     sig = sign_message(expires)
 
@@ -43,7 +54,9 @@ def on_open(ws):
         "args": ["execution"]
     }))
 
-    slack("🟢 Bybit 交易通知機器人已啟動")
+    if not notified_start:
+        if slack("🟢 Bybit 交易通知機器人已啟動"):
+            notified_start = True
 
 def on_message(ws, message):
     data = json.loads(message)
