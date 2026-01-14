@@ -3,7 +3,9 @@ import json
 import time
 import hmac
 import hashlib
+import threading
 import requests
+from flask import Flask
 from websocket import WebSocketApp
 
 # ===== 環境變數 =====
@@ -18,12 +20,21 @@ WS_URL = (
     else "wss://stream.bybit.com/v5/private"
 )
 
+PORT = int(os.getenv("PORT", 8080))
+
 # ===== 狀態 =====
 seen_exec_ids = set()
 started_notified = False
 
+# ===== Flask（騙過 Railway 用）=====
+app = Flask(__name__)
 
-# ===== 工具函式 =====
+@app.route("/")
+def health():
+    return "ok"
+
+
+# ===== 工具 =====
 def sign_message(expires: int) -> str:
     return hmac.new(
         BYBIT_API_SECRET.encode(),
@@ -99,8 +110,8 @@ def on_close(ws, *_):
     print("WebSocket closed")
 
 
-# ===== 主程式（永不結束，Railway 友善）=====
-def run_forever():
+# ===== WebSocket 主循環（永不結束）=====
+def run_ws_forever():
     while True:
         try:
             ws = WebSocketApp(
@@ -114,9 +125,13 @@ def run_forever():
         except Exception as e:
             print("WS crash:", e)
 
-        # 防止瘋狂重連
         time.sleep(5)
 
 
+# ===== 進入點 =====
 if __name__ == "__main__":
-    run_forever()
+    # 背景執行 WebSocket bot
+    threading.Thread(target=run_ws_forever, daemon=True).start()
+
+    # HTTP Server（Railway 需要）
+    app.run(host="0.0.0.0", port=PORT)
